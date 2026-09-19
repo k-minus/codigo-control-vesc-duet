@@ -1,0 +1,50 @@
+(define thr-min 0.41)
+(define thr-max 1.26)
+(define can-id 118)
+(define exp-factor 3.0)
+(define current-rel-boost 0.0)
+
+; ── Freno progresivo ──────────────────────────────────────────────────────
+(define brake-rel-min 0.05)   ; freno mínimo casi parado
+(define brake-rel-max 0.3)    ; freno máximo a alta velocidad
+(define brake-rpm-max 3000.0) ; RPM al que se alcanza el freno máximo
+; ─────────────────────────────────────────────────────────────────────────
+
+(print "=== Script current-rel ===")
+
+(loopwhile t (progn
+  (define adc1-raw (get-adc 0))
+  (define throttle (/ (- adc1-raw thr-min) (- thr-max thr-min)))
+  (if (< throttle 0.0) (setvar 'throttle 0.0))
+  (if (> throttle 1.0) (setvar 'throttle 1.0))
+  (define reversed (> (get-adc 1) 0.5))
+  (define rpm-now (abs (get-rpm)))
+
+  (define throttle-exp (pow throttle exp-factor))
+
+  (define target-rel
+    (if (> throttle-exp current-rel-boost)
+      throttle-exp
+      current-rel-boost))
+
+  (define current-out (if reversed (* target-rel -1.0) target-rel))
+
+  ; Freno progresivo según RPM
+  (define brake-ratio (/ rpm-now brake-rpm-max))
+  (if (> brake-ratio 1.0) (setvar 'brake-ratio 1.0))
+  (define brake-rel (+ brake-rel-min (* brake-ratio (- brake-rel-max brake-rel-min))))
+
+  (if (> throttle 0.05)
+    (progn
+      (set-current-rel current-out)
+      (canset-current-rel can-id current-out)
+    )
+    (progn
+      (set-brake-rel brake-rel)
+      (canset-brake-rel can-id brake-rel)
+    )
+  )
+
+  (print (list "thr:" throttle "out:" current-out "brake:" brake-rel "rpm:" rpm-now))
+  (sleep 0.02)
+))
