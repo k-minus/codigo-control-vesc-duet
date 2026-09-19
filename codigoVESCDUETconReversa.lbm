@@ -1,0 +1,25 @@
+(define max-current 20.0)
+(define thr-min 0.41)
+(define thr-max 1.26)
+
+(print "=== Script iniciado ===")
+
+(loopwhile t (progn
+  (define adc1-raw (get-adc 0))
+  (define throttle (/ (- adc1-raw thr-min) (- thr-max thr-min)))
+  (if (< throttle 0.0) (setvar 'throttle 0.0))
+  (if (> throttle 1.0) (setvar 'throttle 1.0))
+  (define reversed (> (get-adc 1) 0.5))
+
+  (print (list "thr:" throttle "rev:" reversed "rpm:" (get-rpm)))
+
+  (if (> throttle 0.05)
+    (if reversed
+      (set-current (* throttle max-current -1.0))
+      (set-current (* throttle max-current))
+    )
+    (set-brake 10.0)
+  )
+
+  (sleep 0.02)
+))

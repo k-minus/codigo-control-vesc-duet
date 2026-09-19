@@ -1,0 +1,37 @@
+(define max-current 20.0)
+(define rpm-threshold 100)
+(define thr-min 0.41)
+(define thr-max 1.26)
+(define reversed false)
+(define btn-prev false)
+
+(print "=== Script iniciado ===")
+
+(loopwhile t (progn
+  (define adc1-raw (get-adc 0))
+  (define throttle (/ (- adc1-raw thr-min) (- thr-max thr-min)))
+  (if (< throttle 0.0) (setvar 'throttle 0.0))
+  (if (> throttle 1.0) (setvar 'throttle 1.0))
+  (define btn-now (> (get-adc 1) 0.5))
+  (print (list "raw:" adc1-raw "thr:" throttle "btn:" btn-now "rev:" reversed "rpm:" (get-rpm)))
+  (if (and btn-now (not btn-prev))
+    (progn
+      (if (< (abs (get-rpm)) rpm-threshold)
+        (progn
+          (setvar 'reversed (not reversed))
+          (if reversed (print "ATRAS") (print "ADELANTE"))
+        )
+        (print "motor en marcha")
+      )
+    )
+  )
+  (setvar 'btn-prev btn-now)
+  (if (> throttle 0.05)
+    (if reversed
+      (set-current (* throttle max-current -1.0))
+      (set-current (* throttle max-current))
+    )
+    (set-current 0.0)
+  )
+  (sleep 0.02)
+))
