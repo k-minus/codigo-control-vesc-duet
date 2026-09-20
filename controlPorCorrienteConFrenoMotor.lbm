@@ -1,0 +1,62 @@
+; --- PARÁMETROS DE CONFIGURACIÓN -----------------------------------------
+(define max-current 60.0)          ; Corriente máxima objetivo (A)
+(define thr-min 0.41)              ; Voltaje ADC mínimo (sin throttle)
+(define thr-max 1.26)              ; Voltaje ADC máximo (throttle completo)
+(define can-id 118)                ; ID del motor secundario (CAN)
+
+; --- FRENO PROGRESIVO ------------------------------------------------------
+(define brake-max 50.0)            ; Frenada máxima en A (a alta velocidad)
+(define brake-min 3.0)             ; Frenada mínima en A (casi parado)
+(define brake-rpm-max 3000.0)      ; RPM a partir del cual se aplica brake-max
+
+(print "=== Script Control Corriente (Modo Current VESC) ===")
+
+(loopwhile t (progn
+  ; --- LEER ENTRADAS ------------------------------------------------------
+  (define adc1-raw (get-adc 0))
+  (define adc2-raw (get-adc 1))
+  
+  ; Mapeo del throttle [0, 1]
+  (define throttle (/ (- adc1-raw thr-min) (- thr-max thr-min)))
+  (if (< throttle 0.0) (setvar 'throttle 0.0))
+  (if (> throttle 1.0) (setvar 'throttle 1.0))
+  
+  ; Dirección (ADC2 > 0.5 = reversa)
+  (define reversed (> adc2-raw 0.5))
+  (define direction (if reversed -1.0 1.0))
+  
+  ; --- CORRIENTE OBJETIVO -------------------------------------------------
+  (define current-target (* throttle max-current direction))
+  
+  ; --- LEER RPM PARA FRENO --------------------------------------------------
+  (define rpm-now (abs (get-rpm)))
+  
+  ; --- CALCULAR FRENO PROGRESIVO --------------------------------------------
+  (define brake-ratio (/ rpm-now brake-rpm-max))
+  (if (> brake-ratio 1.0) (setvar 'brake-ratio 1.0))
+  (define brake-current (+ brake-min (* brake-ratio (- brake-max brake-min))))
+  
+  ; --- DECIDIR ACCIÓN: ACELERADOR O FRENO -------------------------------
+  (if (> throttle 0.05)
+    ; --- ACELERACIÓN: modo Current (firmware ajusta duty automáticamente) ---
+    (progn
+      (set-current current-target)
+      (canset-current can-id current-target)
+    )
+    ; --- REPOSO: freno progresivo ---
+    (progn
+      (set-brake brake-current)
+      (canset-brake can-id brake-current)
+    )
+  )
+  
+  ; --- DEBUG --------------------------------------------------------------
+  (print (list 
+    "thr:" throttle
+    "I-target:" current-target
+    "rpm:" rpm-now
+    "brake:" brake-current
+  ))
+  
+  (sleep 0.02)
+))
