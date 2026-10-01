@@ -1,0 +1,47 @@
+;; --- PARÁMETROS DE CONFIGURACIÓN -----------------------------------------
+(def max-current 60.0)          ; Corriente máxima objetivo (A)
+(def thr-min 0.41)              ; Voltaje ADC mínimo (sin throttle)
+(def thr-max 1.26)              ; Voltaje ADC máximo (throttle completo)
+(def can-id 118)                ; ID del motor secundario (CAN)
+
+;; --- FRENO PROGRESIVO ------------------------------------------------------
+(def brake-max 50.0)            ; Frenada máxima en A (a alta velocidad)
+(def brake-min 3.0)             ; Frenada mínima en A (casi parado)
+(def brake-rpm-max 3000.0)      ; RPM a partir del cual se aplica brake-max
+
+;; --- CONSTANTES PRECALCULADAS (se calculan una sola vez) -------------------
+(def thr-scale (/ 1.0 (- thr-max thr-min)))
+(def brake-span (- brake-max brake-min))
+(def rpm-scale (/ 1.0 brake-rpm-max))
+
+;; --- FUNCIONES AUXILIARES --------------------------------------------------
+(defun clamp (x lo hi)
+  (cond
+    ((< x lo) lo)
+    ((> x hi) hi)
+    (t x)))
+
+
+(loopwhile t
+  (let ((throttle   (clamp (* (- (get-adc 0) thr-min) thr-scale) 0.0 1.0))
+        (direction  (if (> (get-adc 1) 0.5) -1.0 1.0))
+        (rpm-now    (abs (get-rpm))))
+    (let ((current-target (* throttle max-current direction))
+          (brake-current  (+ brake-min
+                             (* (clamp (* rpm-now rpm-scale) 0.0 1.0)
+                                brake-span))))
+
+      (if (> throttle 0.05)
+          (progn
+            (set-current current-target)
+            (canset-current can-id current-target))
+          (progn
+            (set-brake brake-current)
+            (canset-brake can-id brake-current)))
+
+      (print (list "thr:" throttle
+                   "I-target:" current-target
+                   "rpm:" rpm-now
+                   "brake:" brake-current))
+
+      (sleep 0.02))))
